@@ -45,6 +45,7 @@ java -version
 # Install Jenkins
 # REF: https://www.jenkins.io/doc/book/installing/linux/#debianubuntu
 
+# Installing Jenkins
 sudo wget -O /etc/apt/keyrings/jenkins-keyring.asc \
   https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
 echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc]" \
@@ -54,8 +55,6 @@ sudo apt update
 sudo apt install jenkins -y
 sudo systemctl start jenkins
 sudo systemctl status jenkins
-# sudo systemctl status jenkins                        # to check the status if jenkins is running or not
-
 # Get Jenkins_Public_IP
 ip=$(curl ifconfig.me)
 port1=8080
@@ -94,3 +93,23 @@ kubectl version --client
 sudo apt update -y
 sudo apt install npm -y
 npm -v
+
+#terraform 
+snap install terraform --classic
+
+#EKSCTL
+ARCH=amd64
+PLATFORM=$(uname -s)_$ARCH
+
+curl -sLO "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz"
+
+# (Optional) Verify checksum
+curl -sL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_checksums.txt" | grep $PLATFORM | sha256sum --check
+
+tar -xzf eksctl_$PLATFORM.tar.gz -C /tmp && rm eksctl_$PLATFORM.tar.gz
+
+sudo install -m 0755 /tmp/eksctl /usr/local/bin 
+
+sudo mv /tmp/eksctl /usr/local/bin
+
+eksctl version 
