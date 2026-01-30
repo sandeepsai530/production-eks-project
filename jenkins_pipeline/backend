@@ -1,0 +1,100 @@
+pipeline {
+    agent any 
+    tools {
+        jdk 'JDK'
+        nodejs 'NodeJS'
+    }
+    environment  {
+        AWS_ACCOUNT_ID = credentials('ACCOUNT_ID')
+        AWS_ACCESS_KEY_ID = credentials('AWS_ACCESS_KEY')
+        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_KEY')
+        AWS_ECR_REPO_NAME = credentials('ECR_REPO2')
+        AWS_DEFAULT_REGION = 'us-east-1'
+        REPOSITORY_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/"
+    }
+    stages {
+        stage('1. Cleaning Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('2. Checkout from Git') {
+            steps {
+                git branch: 'main',
+                    credentialsId: 'GITHUB',
+                    url: 'https://github.com/sandeepsai530/production-eks-project.git'
+                }
+        }
+        
+        stage("3. Docker Image Build") {
+            steps {
+                script {
+                    dir('Application-Code/backend') {
+                            sh 'docker system prune -f'
+                            sh 'docker container prune -f'
+                            sh 'docker build -t ${AWS_ECR_REPO_NAME} .'
+                    }
+                }
+            }
+        }
+        stage("4. ECR Image Pushing") {
+            steps {
+                script {
+                        sh """
+                            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+                            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+                            aws configure set region ${AWS_DEFAULT_REGION}
+                            aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URI}
+                            docker tag ${AWS_ECR_REPO_NAME} ${REPOSITORY_URI}${AWS_ECR_REPO_NAME}:${BUILD_NUMBER}
+                            docker push ${REPOSITORY_URI}${AWS_ECR_REPO_NAME}:${BUILD_NUMBER}
+                            """
+                }
+            }
+        }
+        
+       stage('5. Checkout Code') {
+            steps {
+                git branch: 'main',
+                credentialsId: 'GITHUB',
+                url: 'https://github.com/sandeepsai530/production-eks-project.git'
+                }
+            }
+        stage('6. Update Deployment file') {
+    environment {
+        GIT_REPO_NAME = "production-eks-project"
+        GIT_USER_NAME = "sandeepsai530"
+    }
+    steps {
+        dir('Kubernetes-Manifests-file/Backend') {
+            withCredentials([usernamePassword(
+                credentialsId: 'GITHUB',
+                usernameVariable: 'GIT_USERNAME',
+                passwordVariable: 'GIT_TOKEN'
+            )]) {
+                sh '''
+                    set -e
+
+                    git config user.email "sandeepsai530@gmail.com"
+                    git config user.name "sandeepsai530"
+
+                    echo "Build number: $BUILD_NUMBER"
+
+                    imageTag=$(grep -oP '(?<=backend:)[^ ]+' deployment.yaml)
+                    echo "Old image tag: $imageTag"
+
+                    sed -i "s/${AWS_ECR_REPO_NAME}:${imageTag}/${AWS_ECR_REPO_NAME}:${BUILD_NUMBER}/" deployment.yaml
+
+                    git add deployment.yaml
+
+                    git diff --cached --quiet && echo "No changes to commit" && exit 0
+
+                    git commit -m "Update backend image to ${BUILD_NUMBER}"
+
+                    git push https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
+                '''
+            }
+        }
+    }
+        }
+    }
+}
